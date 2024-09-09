@@ -1,10 +1,10 @@
+from Script.Config import Config_Setup
 import os
 import shutil
 import yaml
 import random
 import datetime
 import pandas as pd
-from Script.Config.Config_Setup import downloads_path, agents_Sheet_path
 
 
 def clean_dir(directory):
@@ -29,6 +29,14 @@ def get_first_file_name():
     return files_list[0]
 
 
+def get_files_list(path):
+    files_list = []
+    for filename in os.listdir(path):
+        file_path = os.path.join(path, filename)
+        files_list.append(filename)
+    return files_list
+
+
 def take_backup(source_file_path, destination_dir):
     today_date = datetime.datetime.today().strftime('%d-%m-%Y')
     file_name, file_extension = os.path.splitext(os.path.basename(source_file_path))
@@ -36,3 +44,10 @@ def take_backup(source_file_path, destination_dir):
     new_file_path = os.path.join(destination_dir, new_file_name)
     shutil.copy2(source_file_path, new_file_path)
     return new_file_path
+
+
+def get_file_fullName(partial_file_name):
+    sheets = get_files_list(Config_Setup.input_sheets_dir)
+    for sheet in sheets:
+        if partial_file_name in sheet:
+            return sheet
