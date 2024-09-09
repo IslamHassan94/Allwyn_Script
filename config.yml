@@ -1,0 +1,42 @@
+Logging:
+  LOGGING_DIR: "../Logs/"
+imgs_Path:
+  clarify: "../../imgs/clarify/"
+  browser: "../../imgs/browser/"
+files_Path:
+  dispatchingFile: "../../Files/Dispatching_Sheet.xlsx"
+  history_path: "../../Files/History/"
+  Informe_Diario: "../../Files/Informe_Diario/"
+  informe_sheet: "../../Files/Informe_Diario/Informe.xlsx"
+  agents: "../../Files/Agents.xlsx"
+downloads_Paths:
+  sheet_path: 'C:\Users\HassanI8\Downloads\2.TES_Scripts\ES_QualityDispatching_Script_Python\downloads'
+  default: 'C:\Users\HassanI8\Downloads'
+urls:
+  quality_zone: "https://vodafone.sharepoint.com/sites/QualityZone/Shared%20Documents/Forms/AllItems.aspx?csf=1&web=1&e=wPonvR&CID=16a5b91f%2D3069%2D4d23%2Dbdba%2D35f29bba0124&FolderCTID=0x012000DB53DAA38A63D24885570F6720C0CA25&id=%2Fsites%2FQualityZone%2FShared%20Documents%2FGeneral%2FRuta%20G%20Equipo%20de%20calidad%2FDistribution%2Fauditorias"
+  citrix: "https://essh.caas-int.vodafone.com/Citrix/ESSHWeb/"
+credentials:
+  username: "oamerma1"
+  password: "vois_000000000"
+renovaction_sheetname: "Renovacion"
+##################################################################################################################
+clear_sheets: "true1"
+sheets_names:
+  gdp: "GDP"
+  terminalis: "Termenalis"
+  renovaction: "Renovatcion"
+  error_prov: "Error_Prov"
+steps:
+  export_data: "true"
+  export_GDP: "true1"
+  export_Terminalis: "true1"
+  export_ErrorProv: "true"
+  export_Renovaction: "true1"
+cases_per_agent:
+  gdp: "15"
+  terminalis: "5"
+  renovaction: "4"
+  error_pro: "1"
+current_year: "2024"
+current_month: "August"
+max_queues_per_agent: "2"
