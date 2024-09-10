@@ -5,6 +5,9 @@ import yaml
 import random
 import datetime
 import pandas as pd
+import openpyxl
+from openpyxl import load_workbook
+from openpyxl.utils.datetime import from_excel
 
 
 def clean_dir(directory):
@@ -51,3 +54,27 @@ def get_file_fullName(partial_file_name):
     for sheet in sheets:
         if partial_file_name in sheet:
             return sheet
+
+
+def is_valid_excel_date(serial_date):
+    # Excel uses 1-based serial dates from 1/1/1900 (serial number 1) to 12/31/9999
+    return 1 <= serial_date <= 2958465  # 2958465 corresponds to 12/31/9999
+
+
+def clear_filters_and_unhide_rows(file_path, sheet_name=None):
+    # Load the workbook and select the sheet
+    wb = openpyxl.load_workbook(file_path)
+
+    # Select the active sheet or the specific sheet if provided
+    sheet = wb.active if sheet_name is None else wb[sheet_name]
+
+    # Clear any filters
+    sheet.auto_filter = None
+
+    # Unhide all rows
+    for row in sheet.iter_rows():
+        sheet.row_dimensions[row[0].row].hidden = False
+
+    # Save the workbook after modification
+    wb.save(file_path)
+    print(f"Filters cleared and all rows are unhidden in sheet: {sheet.title}")
