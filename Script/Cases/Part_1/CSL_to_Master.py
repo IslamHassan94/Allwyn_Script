@@ -65,24 +65,42 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
                 f'Y{row_num}').value = order.install_date  # Replace 'Y' with the column for 'Forecasted OLO install Date'
             sheet.range(
                 f'Z{row_num}').value = order.first_poll_date  # Replace 'Z' with the column for 'Actual completion date/OLO First Poll Date'
+
             # Safely handle None values for DateUtil.getTodaysDate()
             today_date = DateUtil.getTodaysDate()
+
+            # Write order body and message only if they are not NaN or empty
             order_body = order.body or ''
             order_message = order.message or ''
 
-            sheet.range(f'I{row_num}').value = today_date
-            sheet.range(f'M{row_num}').value = order_body
-            sheet.range(f'L{row_num}').value = order_message
-            sheet.range(f'K{row_num}').value = f"{today_date}: {order_body} {order_message}"
-            sheet.range(f'J{row_num}').value = f"{today_date}: {order_body} {order_message}"
+            today_date = DateUtil.getTodaysDate()
 
-        if order.service_activated == 1:
-            sheet.range(f'AA{row_num}').value = 'TRUE'
-            sheet.range(f'U{row_num}').value = '2.Commissioning'
-        elif order.service_activated == 0:
-            sheet.range(f'AA{row_num}').value = 'FALSE'
-        else:
-            sheet.range(f'AA{row_num}').value = ''  # Replace 'AA' with the column for 'OLO Service Activated'
+            sheet.range(f'I{row_num}').value = today_date
+            if pd.notna(order_body) and order_body.strip():
+                sheet.range(f'M{row_num}').value = order_body
+            if pd.notna(order_message) and order_message.strip():
+                sheet.range(f'L{row_num}').value = order_message
+
+            # Update the concatenated messages in columns 'K' and 'J' only if body or message are not empty
+            if pd.notna(order_body) and pd.notna(order_message) and (order_body.strip() or order_message.strip()):
+                if pd.notna(order_body) and order_body.strip() and not pd.notna(order_message):
+                    concatenated_message = f"{today_date}: {order_body}"
+                    sheet.range(f'K{row_num}').value = concatenated_message
+                elif pd.notna(order_message) and order_message.strip() and not pd.notna(order_body):
+                    concatenated_message = f"{today_date}: {order_message}"
+                    sheet.range(f'K{row_num}').value = concatenated_message
+                elif pd.notna(order_message) and order_message.strip() and pd.notna(order_body) and order_body.strip():
+                    concatenated_message = f"{today_date}: {order_body} {order_message}"
+                    sheet.range(f'K{row_num}').value = concatenated_message
+
+            sheet.range(f'J{row_num}').value = sheet.range(f'K{row_num}').value
+            if order.service_activated == 1:
+                sheet.range(f'AA{row_num}').value = 'TRUE'
+                sheet.range(f'U{row_num}').value = '2.Commissioning'
+            elif order.service_activated == 0:
+                sheet.range(f'AA{row_num}').value = 'FALSE'
+            else:
+                sheet.range(f'AA{row_num}').value = ''  # Replace 'AA' with the column for 'OLO Service Activated'
 
     # Save and close the workbook without Excel recovery prompts
     book.save()
@@ -131,4 +149,4 @@ def generate_final_vodafone_provide_sheet(path):
         print(f"Error saving the file: {e}")
         # Save to Excel
     with pd.ExcelWriter(output_file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-        filtered_df.to_excel(writer, sheet_name='Provide Update', startrow=0, index=False)
+        filtered_df.to_excel(writer, startrow=0, index=False)
