@@ -20,6 +20,11 @@ def export_orders_from_status_report():
     df = df[df['Site Reference  ↑'].notna()]  # Remove NaT/NaN
     df = df[df['Site Reference  ↑'].str.strip() != '']  # Remove blank or spaces
 
+    # Ensure 'Site Reference  ↑' can be converted to an integer and filter out non-numeric values
+    df['Site Reference  ↑'] = pd.to_numeric(df['Site Reference  ↑'], errors='coerce')
+    df = df.dropna(subset=['Site Reference  ↑'])  # Remove rows with invalid 'Site Reference  ↑' values
+    df['Site Reference  ↑'] = df['Site Reference  ↑'].astype(int)
+
     # Iterate over the rows of the DataFrame and populate the orders list
     for _, row in df.iterrows():
         order = Order(

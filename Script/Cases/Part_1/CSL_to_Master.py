@@ -47,7 +47,7 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
     # Create a dictionary to map retailer IDs to their row numbers in Excel
     retailer_row_map = {}
     for row in range(6, sheet.api.UsedRange.Rows.Count + 1):  # Assuming data starts from row 6 in Excel
-        retailer_id_cell = sheet.range(f'A{row}').value  # Replace 'A' with the column that contains 'Retailer ID'
+        (retailer_id_cell) = sheet.range(f'A{row}').value  # Replace 'A' with the column that contains 'Retailer ID'
         if retailer_id_cell:
             retailer_row_map[retailer_id_cell] = row
 
@@ -57,6 +57,7 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
     # Loop through each order and update the corresponding row in the Excel sheet
     for order in orders:
         if order.retailer_id in retailer_row_map:
+            print(f'ID {order.retailer_id} found.')
             row_num = retailer_row_map[order.retailer_id]
 
             # Update the corresponding cells in the Excel sheet
@@ -101,7 +102,8 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
                 sheet.range(f'AA{row_num}').value = 'FALSE'
             else:
                 sheet.range(f'AA{row_num}').value = ''  # Replace 'AA' with the column for 'OLO Service Activated'
-
+        else:
+            print(f'ID {order.retailer_id} not found')
     # Save and close the workbook without Excel recovery prompts
     book.save()
     book.close()
