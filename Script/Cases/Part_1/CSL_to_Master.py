@@ -1,10 +1,23 @@
 from Script.Config import Config_Setup
 from Script.Utils import FilesUtil
 from Script.Data import ExportOrders
-from openpyxl import load_workbook
+from Script.Utils import ProgressAnimation, DateUtil
+from Script.Config import Logger
+import logging
 import pandas as pd
+import xlwings as xw
+import time
+import threading
+import sys
 
-vodafone_provide_path = Config_Setup.input_sheets_dir + FilesUtil.get_file_fullName(Config_Setup.vodafone_provide)
+#################### Logging #############################
+Logger.init_Logger()
+logger = logging.getLogger("Allwyn Script")
+logging.getLogger("imported_module").setLevel(logging.WARNING)
+##################################################################
+logger.debug("Getting Sheets names...")
+vodafone_provide_path = Config_Setup.input_sheets_dir + FilesUtil.get_file_fullName_by_keyword_in_name(
+    Config_Setup.vodafone_provide, 'Base')
 site_status_report_path = Config_Setup.input_sheets_dir + FilesUtil.get_file_fullName(Config_Setup.site_status_report)
 allwyn_fault_tracking_path = Config_Setup.input_sheets_dir + FilesUtil.get_file_fullName(
     Config_Setup.allwyn_fault_tracking)
@@ -12,21 +25,34 @@ orders = []
 
 
 def handle_Csl_to_master():
+    logger.debug("Exporting orders from Status Report Sheet...")
     orders = ExportOrders.export_orders_from_status_report()
     df_master = pd.read_excel(vodafone_provide_path, sheet_name='Provide Update', skiprows=4)
+    stop_event = threading.Event()
+    progress_thread = threading.Thread(target=ProgressAnimation.rolling_progress_bar, args=(stop_event,))
+    progress_thread.start()
     write_orders_to_master_sheet(orders, df_master, vodafone_provide_path, 'Provide Update')
+    stop_event.set()
+    progress_thread.join()
+    logger.debug("\nData Transfer Completed.")
+    generate_final_vodafone_provide_sheet(vodafone_provide_path)
 
 
 def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
-    book = load_workbook(file_path)
-    sheet = book[sheet_name]
+    # Use xlwings to avoid Excel corruption
+    app = xw.App(visible=False)
+    book = app.books.open(file_path)
+    sheet = book.sheets[sheet_name]
 
     # Create a dictionary to map retailer IDs to their row numbers in Excel
     retailer_row_map = {}
-    for row in range(6, sheet.max_row + 1):  # Assuming data starts from row 6 in Excel
-        retailer_id_cell = sheet[f'A{row}'].value  # Replace 'A' with the column that contains 'Retailer ID'
+    for row in range(6, sheet.api.UsedRange.Rows.Count + 1):  # Assuming data starts from row 6 in Excel
+        retailer_id_cell = sheet.range(f'A{row}').value  # Replace 'A' with the column that contains 'Retailer ID'
         if retailer_id_cell:
             retailer_row_map[retailer_id_cell] = row
+
+    # Handle invalid date cells across all rows
+    handle_invalid_dates(sheet)
 
     # Loop through each order and update the corresponding row in the Excel sheet
     for order in orders:
@@ -34,19 +60,75 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
             row_num = retailer_row_map[order.retailer_id]
 
             # Update the corresponding cells in the Excel sheet
-            sheet[
-                f'X{row_num}'].value = order.date_required  # Replace 'D' with the appropriate column for 'Initial OLO requested date'
-            sheet[
-                f'Y{row_num}'].value = order.install_date  # Replace 'E' with the column for 'Forecasted OLO install Date'
-            sheet[
-                f'Z{row_num}'].value = order.first_poll_date  # Replace 'F' with the column for 'Actual completion date/OLO First Poll Date'
-            sheet[
-                f'AA{row_num}'].value = order.service_activated  # Replace 'G' with the column for 'OLO Service Activated'
+            sheet.range(f'X{row_num}').value = order.date_required  # Replace 'X' with the appropriate column
+            sheet.range(
+                f'Y{row_num}').value = order.install_date  # Replace 'Y' with the column for 'Forecasted OLO install Date'
+            sheet.range(
+                f'Z{row_num}').value = order.first_poll_date  # Replace 'Z' with the column for 'Actual completion date/OLO First Poll Date'
+            # Safely handle None values for DateUtil.getTodaysDate()
+            today_date = DateUtil.getTodaysDate()
+            order_body = order.body or ''
+            order_message = order.message or ''
 
-    # Save the workbook after making the updates
-    book.save(file_path)
-    print(f"Successfully updated {len(orders)} orders in the master sheet")
+            sheet.range(f'I{row_num}').value = today_date
+            sheet.range(f'M{row_num}').value = order_body
+            sheet.range(f'L{row_num}').value = order_message
+            sheet.range(f'K{row_num}').value = f"{today_date}: {order_body} {order_message}"
+            sheet.range(f'J{row_num}').value = f"{today_date}: {order_body} {order_message}"
+
+        if order.service_activated == 1:
+            sheet.range(f'AA{row_num}').value = 'TRUE'
+            sheet.range(f'U{row_num}').value = '2.Commissioning'
+        elif order.service_activated == 0:
+            sheet.range(f'AA{row_num}').value = 'FALSE'
+        else:
+            sheet.range(f'AA{row_num}').value = ''  # Replace 'AA' with the column for 'OLO Service Activated'
+
+    # Save and close the workbook without Excel recovery prompts
+    book.save()
+    book.close()
+    app.quit()
 
 
-if __name__ == '__main__':
-    handle_Csl_to_master()
+def handle_invalid_dates(sheet):
+    # Iterate through all rows and check for invalid date serial values in column 'T'
+    for row in range(6, sheet.api.UsedRange.Rows.Count + 1):  # Adjust start row as needed
+        cell_value = sheet.range(f'T{row}').value  # Adjust column 'T' if necessary
+        if isinstance(cell_value, int) and cell_value > 2958465:  # Max valid Excel date serial
+            print(f"Invalid date value in cell T{row}: {cell_value}")
+            # Handle the invalid date by setting it to None
+            sheet.range(f'T{row}').value = None
+
+
+def generate_final_vodafone_provide_sheet(path):
+    # Define the required columns
+    required_columns = [
+        'Retailer ID', 'SR No.', 'Order batch date', 'Allwyn Site Type (ie Type 1 or 2)',
+        'SOGEA / FTTP', 'Store Name', 'City', 'Postcode', 'Updates / Comments',
+        'Access Service Id\n(VF Access Service Id)', 'Connection ID\n(CSL Service)', 'Site Status',
+        'Appointment Slot - AM (9am-1pm) / PM (1pm - 5pm)', 'Site Survey Date', 'Initial OLO requested date',
+        'Forecasted OLO install Date', 'Actual completion date\nOLO First Poll Date',
+        'OLO Service Activated', 'Line test (Fault)', 'Scheduled Router Install Date',
+        'Completed Router Install Date & Time', 'CSL Router - S/N'
+    ]
+
+    # Read the Excel sheet
+    try:
+        df = pd.read_excel(path, sheet_name='Provide Update', skiprows=4)
+        print("Columns in Excel file:", df.columns.tolist())  # Print the actual columns for inspection
+    except Exception as e:
+        print(f"Error reading the file: {e}")
+        return None
+
+    # Filter the DataFrame to include only the required columns
+    filtered_df = df[required_columns]
+
+    # Save the filtered DataFrame to a new Excel file
+    output_file_path = Config_Setup.output_folder + f'Vodafone_Provide_Update_{DateUtil.getTodaysDateInSerialFormat()}.xlsx'
+    try:
+        filtered_df.to_excel(output_file_path, index=False)
+    except Exception as e:
+        print(f"Error saving the file: {e}")
+        # Save to Excel
+    with pd.ExcelWriter(output_file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+        filtered_df.to_excel(writer, sheet_name='Provide Update', startrow=0, index=False)

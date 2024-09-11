@@ -1,5 +1,5 @@
 @echo off
-cd Scripts
+cd Script
 cd Main
 python Main.py 
 pause

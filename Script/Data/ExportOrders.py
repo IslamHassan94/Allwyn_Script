@@ -13,7 +13,8 @@ def export_orders_from_status_report():
     df = pd.read_excel(site_status_report_path)
 
     # Filter the dataframe to only include the desired columns
-    df = df[['Site Reference  ↑', 'Date Required', 'Install Date', 'First Poll Date', 'Service Activated']]
+    df = df[['Site Reference  ↑', 'Date Required', 'Install Date', 'First Poll Date', 'Service Activated', 'Message',
+             'Body']]
 
     # Remove rows where 'Site Reference ↑' is NaT/NaN/blank
     df = df[df['Site Reference  ↑'].notna()]  # Remove NaT/NaN
@@ -26,7 +27,9 @@ def export_orders_from_status_report():
             date_required=row['Date Required'],
             install_date=row['Install Date'],
             first_poll_date=row['First Poll Date'],
-            service_activated=row['Service Activated']
+            service_activated=row['Service Activated'],
+            message=row['Message'],
+            body=row['Body']
         )
         orders.append(order)
 

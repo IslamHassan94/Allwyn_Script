@@ -4,8 +4,15 @@ from datetime import datetime, timedelta
 def getTodaysDate():
     from datetime import datetime
     today = datetime.today()
-    day = today.strftime('%d')
-    print(day)
+    day = today.strftime("%m/%d/%Y")
+    return str(day)
+
+
+def getTodaysDateInSerialFormat():
+    from datetime import datetime
+    today = datetime.today()
+    day = today.strftime('%Y%m%d')
+    return str(day)
 
 
 def getCiclo():
@@ -30,4 +37,4 @@ def get_tomorrows_date():
 
 
 if __name__ == '__main__':
-    print(get_tomorrows_date())
+    print(getTodaysDateInSerialFormat())

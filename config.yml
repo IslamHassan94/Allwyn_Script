@@ -1,7 +1,10 @@
 Logging:
   LOGGING_DIR: "../Logs/"
 Input_Sheets:
-  input_folder: '../../../Input_Sheets/'
+  input_folder: '../../Input_Sheets/'
   vodafone_provide: "Vodafone_Provide_Update"
   allwyn_fault_tracking: "Allwyn Provide Fault tracking Master"
   site_status_report: "Site status report"
+output_folder: '../../Output_Sheets/'
+password_protection_path: '../../Output_Sheets/'
+password: 'NoC8f8gjq^D?!Bp'

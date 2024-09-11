@@ -1,13 +1,40 @@
 from Script.Config import Config_Setup
-import os
-import shutil
 import yaml
 import random
 import datetime
 import pandas as pd
 import openpyxl
+import win32com.client as win32
 from openpyxl import load_workbook
 from openpyxl.utils.datetime import from_excel
+import zipfile
+import os
+import msoffcrypto
+import io
+
+
+def protect_excel_with_password(file_path: str, password: str):
+    # Check if the file exists
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"The file '{file_path}' does not exist.")
+
+    # Create an instance of Excel
+    excel = win32.Dispatch("Excel.Application")
+
+    # Open the Excel file
+    workbook = excel.Workbooks.Open(file_path)
+
+    # Set the password to protect the file
+    workbook.Password = password
+
+    # Save the workbook with the password
+    workbook.Save()
+
+    # Close the workbook and quit Excel
+    workbook.Close()
+    excel.Quit()
+
+    print(f"The file '{file_path}' has been password protected.")
 
 
 def clean_dir(directory):
@@ -53,6 +80,20 @@ def get_file_fullName(partial_file_name):
     sheets = get_files_list(Config_Setup.input_sheets_dir)
     for sheet in sheets:
         if partial_file_name in sheet:
+            return sheet
+
+
+def get_file_fullName_by_keyword_in_name(partial_file_name, keyword):
+    sheets = get_files_list(Config_Setup.input_sheets_dir)
+    for sheet in sheets:
+        if partial_file_name in sheet and keyword in sheet:
+            return sheet
+
+
+def get_file_fullName_by_keyword_not_in_name(partial_file_name, keyword):
+    sheets = get_files_list(Config_Setup.input_sheets_dir)
+    for sheet in sheets:
+        if partial_file_name in sheet and keyword not in sheet:
             return sheet
 
 
