@@ -64,6 +64,8 @@ def export_orders_from_status_report():
                 orders.append(order)
 
     print(f"Successfully added {len(orders)} orders to the list")
+    for o in orders:
+        print(o.date_required)
     return orders
 
 

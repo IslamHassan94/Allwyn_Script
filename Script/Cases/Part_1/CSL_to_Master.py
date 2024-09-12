@@ -60,6 +60,7 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
             row_num = retailer_row_map[order.retailer_id]
 
             # Update the corresponding cells in the Excel sheet
+            print(order.date_required)
             sheet.range(f'X{row_num}').value = order.date_required  # Replace 'X' with the appropriate column
             sheet.range(
                 f'Y{row_num}').value = order.install_date  # Replace 'Y' with the column for 'Forecasted OLO install Date'
@@ -94,11 +95,11 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
                     sheet.range(f'K{row_num}').value = concatenated_message
 
             sheet.range(f'J{row_num}').value = sheet.range(f'K{row_num}').value
-            if order.service_activated == 1:
+            if order.service_activated == 1 or order.service_activated == 'TRUE' or order.service_activated == 'True':
                 sheet.range(f'AA{row_num}').value = 'TRUE'
                 sheet.range(f'U{row_num}').value = '2.Commissioning'
-            elif order.service_activated == 0:
-                sheet.range(f'AA{row_num}').value = 'FALSE'
+            elif order.service_activated == 0 or order.service_activated == 'FALSE' or order.service_activated == 'False':
+                sheet.range(f'AA{row_num}').value = ''
             else:
                 sheet.range(f'AA{row_num}').value = ''  # Replace 'AA' with the column for 'OLO Service Activated'
 
@@ -147,7 +148,7 @@ def generate_final_vodafone_provide_sheet(path):
         raise KeyError(f"The following columns are missing from the DataFrame: {missing_columns}")
 
     # Filter the DataFrame to include only the required columns
-    filtered_df = df.loc[:, required_columns]
+    filtered_df = df.loc[0:, required_columns]
 
     # Define columns that potentially contain dates (excluding 'Order batch date')
     date_columns = [

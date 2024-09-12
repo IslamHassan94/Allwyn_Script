@@ -39,7 +39,3 @@ def get_tomorrows_date():
 def get_yesterday_date():
     yesterday = datetime.now() - timedelta(days=1)
     return yesterday.strftime('%d/%m/%Y')
-
-
-if __name__ == '__main__':
-    print(get_yesterday_date())
