@@ -57,7 +57,6 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
     # Loop through each order and update the corresponding row in the Excel sheet
     for order in orders:
         if order.retailer_id in retailer_row_map:
-            print(f'ID {order.retailer_id} found.')
             row_num = retailer_row_map[order.retailer_id]
 
             # Update the corresponding cells in the Excel sheet
@@ -102,8 +101,7 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
                 sheet.range(f'AA{row_num}').value = 'FALSE'
             else:
                 sheet.range(f'AA{row_num}').value = ''  # Replace 'AA' with the column for 'OLO Service Activated'
-        else:
-            print(f'ID {order.retailer_id} not found')
+
     # Save and close the workbook without Excel recovery prompts
     book.save()
     book.close()
@@ -125,9 +123,9 @@ def generate_final_vodafone_provide_sheet(path):
     required_columns = [
         'Retailer ID', 'SR No.', 'Order batch date', 'Allwyn Site Type (ie Type 1 or 2)',
         'SOGEA / FTTP', 'Store Name', 'City', 'Postcode', 'Updates / Comments',
-        'Access Service Id\n(VF Access Service Id)', 'Connection ID\n(CSL Service)', 'Site Status',
+        'Access Service Id (VF Access Service Id)', 'Connection ID (CSL Service)', 'Site Status',
         'Appointment Slot - AM (9am-1pm) / PM (1pm - 5pm)', 'Site Survey Date', 'Initial OLO requested date',
-        'Forecasted OLO install Date', 'Actual completion date\nOLO First Poll Date',
+        'Forecasted OLO install Date', 'Actual completion date OLO First Poll Date',
         'OLO Service Activated', 'Line test (Fault)', 'Scheduled Router Install Date',
         'Completed Router Install Date & Time', 'CSL Router - S/N'
     ]
@@ -140,8 +138,29 @@ def generate_final_vodafone_provide_sheet(path):
         print(f"Error reading the file: {e}")
         return None
 
+    # Replace newline characters in column names for easier handling
+    df.columns = df.columns.str.replace('\n', ' ').str.strip()
+
+    # Check if the required columns are present in the DataFrame
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        raise KeyError(f"The following columns are missing from the DataFrame: {missing_columns}")
+
     # Filter the DataFrame to include only the required columns
-    filtered_df = df[required_columns]
+    filtered_df = df.loc[:, required_columns]
+
+    # Define columns that potentially contain dates (excluding 'Order batch date')
+    date_columns = [
+        'Site Survey Date', 'Initial OLO requested date', 'Forecasted OLO install Date',
+        'Actual completion date OLO First Poll Date',  # Adjusted name without '\n'
+        'Scheduled Router Install Date', 'Completed Router Install Date & Time'
+    ]
+
+    # Format the date columns in UK format (DD/MM/YYYY) and remove time component
+    for col in date_columns:
+        if col in filtered_df.columns:
+            filtered_df[col] = pd.to_datetime(filtered_df[col], errors='coerce').dt.date
+            filtered_df[col] = filtered_df[col].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) else '')
 
     # Save the filtered DataFrame to a new Excel file
     output_file_path = Config_Setup.output_folder + f'Vodafone_Provide_Update_{DateUtil.getTodaysDateInSerialFormat()}.xlsx'
@@ -149,6 +168,7 @@ def generate_final_vodafone_provide_sheet(path):
         filtered_df.to_excel(output_file_path, index=False)
     except Exception as e:
         print(f"Error saving the file: {e}")
-        # Save to Excel
+
+    # Save to Excel with openpyxl in case further appending or modifications are needed
     with pd.ExcelWriter(output_file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
         filtered_df.to_excel(writer, startrow=0, index=False)
