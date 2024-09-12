@@ -15,14 +15,25 @@ from datetime import datetime
 def export_orders_from_status_report():
     # Read the Excel file
     df = pd.read_excel(site_status_report_path)
-    df = df[df['First Poll Date'].notna()]  # Keep rows where 'First Poll Date' is not NaN
-    df = df[
-        df['First Poll Date'].str.strip() != '']  # Keep rows where 'First Poll Date' is not an empty string or spaces
 
-    # Convert the relevant date columns to datetime and format them
-    df['First Poll Date'] = pd.to_datetime(df['First Poll Date'])
-    df['Date Required'] = pd.to_datetime(df['Date Required'], errors='coerce')  # Coerce invalid dates to NaT
-    df['Install Date'] = pd.to_datetime(df['Install Date'], errors='coerce')  # Coerce invalid dates to NaT
+    # Keep rows where 'First Poll Date' is not NaN or empty
+    df = df[df['First Poll Date'].notna() & df['First Poll Date'].str.strip() != '']
+
+    # Strip leading/trailing spaces in date columns (in case there are hidden characters)
+    df['First Poll Date'] = df['First Poll Date'].str.strip()
+    df['Date Required'] = df['Date Required'].astype(str).str.strip()  # Convert to str and strip spaces
+    df['Install Date'] = df['Install Date'].astype(str).str.strip()
+
+    # Convert the relevant date columns to datetime and handle parsing errors
+    df['First Poll Date'] = pd.to_datetime(df['First Poll Date'], errors='coerce')
+    df['Date Required'] = pd.to_datetime(df['Date Required'], errors='coerce')
+    df['Install Date'] = pd.to_datetime(df['Install Date'], errors='coerce')
+
+    # Check for any NaN in 'Date Required' and print details for debugging
+    problematic_rows = df[df['Date Required'].isna()]
+    if not problematic_rows.empty:
+        print("Found NaN in 'Date Required' after conversion. Here are the raw values:")
+        print(problematic_rows[['Site Reference  ↑', 'Date Required']])
 
     # Format the dates to the desired format '%d/%m/%y'
     df['First Poll Date'] = df['First Poll Date'].dt.strftime('%d/%m/%y')
@@ -33,14 +44,16 @@ def export_orders_from_status_report():
     df = df[['Site Reference  ↑', 'Date Required', 'Install Date', 'First Poll Date', 'Service Activated', 'Message',
              'Body']]
 
-    # Remove rows where 'Site Reference ↑' is NaT/NaN/blank
-    df = df[df['Site Reference  ↑'].notna()]  # Remove NaT/NaN
-    df = df[df['Site Reference  ↑'].str.strip() != '']  # Remove blank or spaces
+    # Remove rows where 'Site Reference ↑' is NaN or blank
+    df = df[df['Site Reference  ↑'].notna() & df['Site Reference  ↑'].str.strip() != '']
 
     # Ensure 'Site Reference  ↑' can be converted to an integer and filter out non-numeric values
     df['Site Reference  ↑'] = pd.to_numeric(df['Site Reference  ↑'], errors='coerce')
-    df = df.dropna(subset=['Site Reference  ↑'])  # Remove rows with invalid 'Site Reference  ↑' values
+    df = df.dropna(subset=['Site Reference  ↑'])
     df['Site Reference  ↑'] = df['Site Reference  ↑'].astype(int)
+
+    # Prepare the list of orders
+    orders = []
 
     # Iterate over the rows of the DataFrame and populate the orders list
     for _, row in df.iterrows():
@@ -51,21 +64,24 @@ def export_orders_from_status_report():
         # Create Order object with the formatted dates
         order = Order(
             retailer_id=row['Site Reference  ↑'],
-            date_required=date_required,  # Already formatted
-            install_date=install_date,  # Already formatted
-            first_poll_date=first_poll_date,  # Already formatted
+            date_required=date_required,
+            install_date=install_date,
+            first_poll_date=first_poll_date,
             service_activated=row['Service Activated'],
             message=row['Message'],
             body=row['Body']
         )
+
         # Check if the first poll date is the same as yesterday
         if pd.notna(first_poll_date):
             if is_same_day((datetime.strptime(first_poll_date, '%d/%m/%y')), DateUtil.get_yesterday_date()):
                 orders.append(order)
 
     print(f"Successfully added {len(orders)} orders to the list")
+
     for o in orders:
         print(o.date_required)
+
     return orders
 
 

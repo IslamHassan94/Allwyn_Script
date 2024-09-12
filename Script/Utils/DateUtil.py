@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 def getTodaysDate():
     from datetime import datetime
     today = datetime.today()
-    day = today.strftime("%m/%d/%Y")
+    day = today.strftime("%d/%m/%y")
     return str(day)
 
 
