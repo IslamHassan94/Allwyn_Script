@@ -1,8 +1,12 @@
+from datetime import datetime
 from Script.Config import Config_Setup
 from Script.Utils import FilesUtil
 from Script.Data import ExportOrders
 from Script.Utils import ProgressAnimation, DateUtil
 from Script.Config import Logger
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import NamedStyle
 import logging
 import pandas as pd
 import xlwings as xw
@@ -22,23 +26,30 @@ site_status_report_path = Config_Setup.input_sheets_dir + FilesUtil.get_file_ful
 allwyn_fault_tracking_path = Config_Setup.input_sheets_dir + FilesUtil.get_file_fullName(
     Config_Setup.allwyn_fault_tracking)
 orders = []
+filtered_orders_without_true = []
+true_orders = []
 
 
 def handle_Csl_to_master():
     logger.debug("Exporting orders from Status Report Sheet...")
     orders = ExportOrders.export_orders_from_status_report()
+    true_orders = ExportOrders.filter_True_orders(orders)
+    filtered_orders_without_true = ExportOrders.filter_orders_without_true(orders, true_orders)
+    print(f'orders count: {len(orders)}')
+    print(f'true orders count: {len(true_orders)}')
+    print(f'filtered orders count: {len(filtered_orders_without_true)}')
     df_master = pd.read_excel(vodafone_provide_path, sheet_name='Provide Update', skiprows=4)
     stop_event = threading.Event()
     progress_thread = threading.Thread(target=ProgressAnimation.rolling_progress_bar, args=(stop_event,))
     progress_thread.start()
-    write_orders_to_master_sheet(orders, df_master, vodafone_provide_path, 'Provide Update')
+    write_orders_to_master_sheet(filtered_orders_without_true, true_orders, df_master, vodafone_provide_path,
+                                 'Provide Update')
     stop_event.set()
     progress_thread.join()
     logger.debug("\nData Transfer Completed.")
-    generate_final_vodafone_provide_sheet(vodafone_provide_path)
 
 
-def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
+def write_orders_to_master_sheet(filtered_orders_not_true, true_orders, df_master, file_path, sheet_name):
     # Use xlwings to avoid Excel corruption
     app = xw.App(visible=False)
     book = app.books.open(file_path)
@@ -47,43 +58,50 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
     # Create a dictionary to map retailer IDs to their row numbers in Excel
     retailer_row_map = {}
     for row in range(6, sheet.api.UsedRange.Rows.Count + 1):  # Assuming data starts from row 6 in Excel
-        (retailer_id_cell) = sheet.range(f'A{row}').value  # Replace 'A' with the column that contains 'Retailer ID'
+        retailer_id_cell = sheet.range(f'A{row}').value  # Replace 'A' with the column that contains 'Retailer ID'
         if retailer_id_cell:
             retailer_row_map[retailer_id_cell] = row
 
     # Handle invalid date cells across all rows
     handle_invalid_dates(sheet)
 
-    # Loop through each order and update the corresponding row in the Excel sheet
-    for order in orders:
+    # Loop through each order in true_orders and update corresponding row in the Excel sheet
+    for order in true_orders:
         if order.retailer_id in retailer_row_map:
             row_num = retailer_row_map[order.retailer_id]
 
             # Update the corresponding cells in the Excel sheet
-            print(order.date_required)
             sheet.range(f'X{row_num}').value = order.date_required  # Replace 'X' with the appropriate column
             sheet.range(
                 f'Y{row_num}').value = order.install_date  # Replace 'Y' with the column for 'Forecasted OLO install Date'
-            sheet.range(
-                f'Z{row_num}').value = order.first_poll_date  # Replace 'Z' with the column for 'Actual completion date/OLO First Poll Date'
+            converted_first_poll_date = datetime.strptime(order.first_poll_date, "%d/%m/%Y")
+            sheet.range(f'Z{row_num}').value = converted_first_poll_date
+            # # Handle first_poll_date to check if it's a datetime object or a string
+            # if isinstance(order.first_poll_date, datetime.datetime):
+            #     sheet.range(f'Z{row_num}').value = order.first_poll_date.strftime('%d/%m/%y')
+            # else:
+            #     sheet.range(f'Z{row_num}').value = order.first_poll_date  # Directly assign if it's already a string
+
+            print(sheet.range(f'Z{row_num}').value)
 
             # Safely handle None values for DateUtil.getTodaysDate()
             today_date = DateUtil.getTodaysDate()
 
-            # Write order body and message only if they are not NaN or empty
+            # Write order body and message only if they are not NaN, empty, or whitespace
             order_body = order.body or ''
             order_message = order.message or ''
 
-            today_date = DateUtil.getTodaysDate()
+            if pd.notna(order_body) and order_body.strip() or pd.notna(order_message) and order_message.strip():
+                # Write today's date in column 'I' only if body or message is not empty
+                sheet.range(f'I{row_num}').value = today_date
 
-            sheet.range(f'I{row_num}').value = today_date
-            if pd.notna(order_body) and order_body.strip():
-                sheet.range(f'M{row_num}').value = order_body
-            if pd.notna(order_message) and order_message.strip():
-                sheet.range(f'L{row_num}').value = order_message
+                # Write order body and message in columns 'M' and 'L' respectively if not empty
+                if pd.notna(order_body) and order_body.strip():
+                    sheet.range(f'M{row_num}').value = order_body
+                if pd.notna(order_message) and order_message.strip():
+                    sheet.range(f'L{row_num}').value = order_message
 
-            # Update the concatenated messages in columns 'K' and 'J' only if body or message are not empty
-            if pd.notna(order_body) and pd.notna(order_message) and (order_body.strip() or order_message.strip()):
+                # Update concatenated messages in columns 'K' and 'J' based on body and message content
                 if pd.notna(order_body) and order_body.strip() and not pd.notna(order_message):
                     concatenated_message = f"{today_date}: {order_body}"
                     sheet.range(f'K{row_num}').value = concatenated_message
@@ -94,14 +112,19 @@ def write_orders_to_master_sheet(orders, df_master, file_path, sheet_name):
                     concatenated_message = f"{today_date}: {order_body} {order_message}"
                     sheet.range(f'K{row_num}').value = concatenated_message
 
-            sheet.range(f'J{row_num}').value = sheet.range(f'K{row_num}').value
-            if order.service_activated == 1 or order.service_activated == 'TRUE' or order.service_activated == 'True':
+                # Copy the value from column 'K' to column 'J'
+                sheet.range(f'J{row_num}').value = sheet.range(f'K{row_num}').value
                 sheet.range(f'AA{row_num}').value = 'TRUE'
                 sheet.range(f'U{row_num}').value = '2.Commissioning'
-            elif order.service_activated == 0 or order.service_activated == 'FALSE' or order.service_activated == 'False':
-                sheet.range(f'AA{row_num}').value = ''
-            else:
-                sheet.range(f'AA{row_num}').value = ''  # Replace 'AA' with the column for 'OLO Service Activated'
+
+    # New loop to handle filtered_orders_not_true
+    for order in filtered_orders_not_true:
+        if order.retailer_id in retailer_row_map:
+            row_num = retailer_row_map[order.retailer_id]
+            # Only update columns X and Y
+            sheet.range(f'X{row_num}').value = order.date_required  # Replace 'X' with the appropriate column
+            sheet.range(
+                f'Y{row_num}').value = order.install_date  # Replace 'Y' with the column for 'Forecasted OLO install Date'
 
     # Save and close the workbook without Excel recovery prompts
     book.save()
@@ -134,7 +157,6 @@ def generate_final_vodafone_provide_sheet(path):
     # Read the Excel sheet
     try:
         df = pd.read_excel(path, sheet_name='Provide Update', skiprows=4)
-        print("Columns in Excel file:", df.columns.tolist())  # Print the actual columns for inspection
     except Exception as e:
         print(f"Error reading the file: {e}")
         return None
@@ -148,20 +170,20 @@ def generate_final_vodafone_provide_sheet(path):
         raise KeyError(f"The following columns are missing from the DataFrame: {missing_columns}")
 
     # Filter the DataFrame to include only the required columns
-    filtered_df = df.loc[0:, required_columns]
+    filtered_df = df.loc[:, required_columns]
 
-    # Define columns that potentially contain dates (excluding 'Order batch date')
+    # Define columns that potentially contain dates
     date_columns = [
         'Site Survey Date', 'Initial OLO requested date', 'Forecasted OLO install Date',
-        'Actual completion date OLO First Poll Date',  # Adjusted name without '\n'
+        'Actual completion date OLO First Poll Date',
         'Scheduled Router Install Date', 'Completed Router Install Date & Time'
     ]
 
-    # Format the date columns in UK format (DD/MM/YYYY) and remove time component
+    # Convert dates to datetime and format them
     for col in date_columns:
         if col in filtered_df.columns:
-            filtered_df[col] = pd.to_datetime(filtered_df[col], errors='coerce').dt.date
-            filtered_df[col] = filtered_df[col].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) else '')
+            filtered_df[col] = pd.to_datetime(filtered_df[col], errors='coerce', dayfirst=True)
+            filtered_df[col] = filtered_df[col].dt.strftime('%d/%m/%Y')
 
     # Save the filtered DataFrame to a new Excel file
     output_file_path = Config_Setup.output_folder + f'Vodafone_Provide_Update_{DateUtil.getTodaysDateInSerialFormat()}.xlsx'
@@ -170,6 +192,41 @@ def generate_final_vodafone_provide_sheet(path):
     except Exception as e:
         print(f"Error saving the file: {e}")
 
-    # Save to Excel with openpyxl in case further appending or modifications are needed
+
+def add_group_by_month_filter():
+    output_file_path = Config_Setup.output_folder + f'Vodafone_Provide_Update_{DateUtil.getTodaysDateInSerialFormat()}.xlsx'
+
+    # Read the Excel file into a DataFrame
+    df = pd.read_excel(output_file_path)
+
+    # Convert the 'Actual completion date OLO First Poll Date' to datetime and format as 'dd/mm/yyyy'
+    df['Actual completion date OLO First Poll Date'] = pd.to_datetime(df['Actual completion date OLO First Poll Date'],
+                                                                      dayfirst=True, errors='coerce')
+
+    # Ensure the date is formatted as 'dd/mm/yyyy'
+    df['Actual completion date OLO First Poll Date'] = df['Actual completion date OLO First Poll Date'].dt.strftime(
+        '%d/%m/%Y')
+
+    # Save the DataFrame back to the same Excel file
     with pd.ExcelWriter(output_file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-        filtered_df.to_excel(writer, startrow=0, index=False)
+        df.to_excel(writer, index=False)
+
+    # Load the workbook and worksheet using openpyxl
+    wb = load_workbook(output_file_path)
+    ws = wb.active
+
+    # Apply filter on the column "Actual completion date OLO First Poll Date"
+    ws.auto_filter.ref = ws.dimensions  # Auto filter for the entire sheet
+    ws.auto_filter.add_filter_column(0, [])  # Apply filter to the first column (change index if necessary)
+
+    # Define a date style for the "dd/mm/yyyy" format
+    date_style = NamedStyle(name="dd_mm_yyyy", number_format="DD/MM/YYYY")
+
+    # Apply the date style to the relevant column
+    for row in ws.iter_rows(min_row=2, min_col=1, max_col=1):  # Assuming date is in column 1
+        for cell in row:
+            if isinstance(cell.value, datetime):
+                cell.style = date_style
+
+    # Save the updated workbook with the filter and date formatting
+    wb.save(output_file_path)

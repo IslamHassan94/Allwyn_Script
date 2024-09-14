@@ -16,3 +16,4 @@ output_file_path = os.path.abspath(
 if __name__ == '__main__':
     CSL_to_Master.handle_Csl_to_master()
     CSL_to_Master.generate_final_vodafone_provide_sheet(CSL_to_Master.vodafone_provide_path)
+    # CSL_to_Master.add_group_by_month_filter()
